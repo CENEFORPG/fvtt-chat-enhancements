@@ -37,9 +37,10 @@ Hooks.on("renderAbstractSidebarTab", (tab) => {
         if (isNewFont) chatLog.classList.add("font-applied");
     }
 });
-Hooks.on("combatTurnChange", (combatData) => {
-    TurnNotice.notice(combatData);
-});
+// [CENEFORPG fork] Turn alarm disabled — handled by the "Your Turn!" module instead.
+// Hooks.on("combatTurnChange", (combatData) => {
+//     TurnNotice.notice(combatData);
+// });
 Hooks.on("chatMessage", (chatLog, message, sender) => ChatHandler.chatProcessor(chatLog, message, sender));
 Hooks.on("preCreateChatMessage", (message, source, options, id) => ChatHandler.preProcesser(message, source, options, id));
 Hooks.on("createChatMessage", (message, option, id) => ChatHandler.createProcesser(message, option, id));
