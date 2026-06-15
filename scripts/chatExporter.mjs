@@ -237,9 +237,12 @@ export default class ChatExporter {
         const vars = ["--priv-talk-font-color", "--priv-talk-font-size", "--priv-talk-margin-left", "--sch-cus-chat-font-size"]
             .map(v => `${v}:${root.getPropertyValue(v).trim()};`).join("");
         const noBgCss = noBg ? `
-            /* 양피지 질감 배경 제거 (무지 배경) */
+            /* 양피지/질감 배경 제거 (무지 배경) */
             body { background: #ffffff !important; }
             #chat-log .chat-message { --chat-message-background: #f8f4f1 !important; background-image: none !important; background-color: #f8f4f1 !important; }
+            /* dnd5e2 는 메시지 위에 ::before/::after 로 질감(texture-*.webp)을 덧씌우므로 그 이미지도 제거 */
+            #chat-log .chat-message::before, #chat-log .message::before,
+            #chat-log .chat-message::after, #chat-log .message::after { background-image: none !important; }
         ` : "";
         return `
             :root{${vars}}
