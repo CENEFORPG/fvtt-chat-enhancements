@@ -65,9 +65,29 @@ export default class ChatExporter {
         standalone.htmlFor = "include-standalone";
         standalone.append(includeStandalone, standaloneDiv);
 
+        // [CENEFORPG fork] 양피지 질감 배경 제거 옵션
+        const includeNoBg = document.createElement("input");
+        includeNoBg.type = "checkbox";
+        includeNoBg.name = "nobg";
+        includeNoBg.id = "include-nobg";
+
+        const noBgH3 = document.createElement("h3");
+        noBgH3.innerHTML = "양피지 배경 제외";
+
+        const noBgP = document.createElement("p");
+        noBgP.innerHTML = "양피지 질감 배경을 빼고 깔끔한 무지 배경으로 내보냅니다.";
+
+        const noBgDiv = document.createElement("div");
+        noBgDiv.append(noBgH3, noBgP);
+
+        const noBg = document.createElement("label");
+        noBg.id = "export-nobg";
+        noBg.htmlFor = "include-nobg";
+        noBg.append(includeNoBg, noBgDiv);
+
         const exporterForm = document.createElement("form");
         exporterForm.id = "chat-exporter";
-        exporterForm.append(types, CSS, standalone);
+        exporterForm.append(types, CSS, standalone, noBg);
 
         const exporter = new Dialog({
             title: `Chat Exporter`,
@@ -77,14 +97,14 @@ export default class ChatExporter {
                     label: game.i18n.localize("MRKB.OrderFlag"),
                     callback: () => {
                         const form = document.querySelector("#chat-exporter");
-                        this.exportHTML(true, form?.css?.checked, form?.standalone?.checked)
+                        this.exportHTML(true, form?.css?.checked, form?.standalone?.checked, form?.nobg?.checked)
                     }
                 },
                 timestamp: {
                     label: game.i18n.localize("MRKB.Timestamp"),
                     callback: () => {
                         const form = document.querySelector("#chat-exporter");
-                        this.exportHTML(false, form?.css?.checked, form?.standalone?.checked)
+                        this.exportHTML(false, form?.css?.checked, form?.standalone?.checked, form?.nobg?.checked)
                     }
                 },
                 cancel: {
@@ -211,11 +231,16 @@ export default class ChatExporter {
         return texts.join("\n");
     }
 
-    // [CENEFORPG fork] 모든 CSS 뒤에 와야 하는 보정 스타일: 잡담 변수값 주입 + dnd5e2 헤더 잘림 수정
-    static get exportExtraCSS() {
+    // [CENEFORPG fork] 모든 CSS 뒤에 와야 하는 보정 스타일: 잡담 변수값 주입 + dnd5e2 헤더 잘림 수정 (+ 옵션: 양피지 배경 제거)
+    static extraCSS(noBg = false) {
         const root = getComputedStyle(document.documentElement);
         const vars = ["--priv-talk-font-color", "--priv-talk-font-size", "--priv-talk-margin-left", "--sch-cus-chat-font-size"]
             .map(v => `${v}:${root.getPropertyValue(v).trim()};`).join("");
+        const noBgCss = noBg ? `
+            /* 양피지 질감 배경 제거 (무지 배경) */
+            body { background: #ffffff !important; }
+            #chat-log .chat-message { --chat-message-background: #f8f4f1 !important; background-image: none !important; background-color: #f8f4f1 !important; }
+        ` : "";
         return `
             :root{${vars}}
             body { padding: 0; }
@@ -224,10 +249,11 @@ export default class ChatExporter {
             #chat-log .message-header h4.message-sender { height: auto; overflow: visible; flex-direction: row; align-items: center; gap: 6px; }
             #chat-log .message-header h4.message-sender .avatar img { width: 40px; height: 40px; flex: none; object-fit: cover; border-radius: 6px; }
             #chat-log .message-header h4.message-sender .name-stacked { display: flex; flex-direction: column; min-width: 0; overflow: visible; }
+            ${noBgCss}
         `;
     }
 
-    static exportHTML(order = false, css = false, standalone = false) {
+    static exportHTML(order = false, css = false, standalone = false, noBg = false) {
         const useCss = css || standalone; // 독립형은 CSS 인라인이 전제이므로 css 강제
         try {
             ChatExporter.createHTML(async (list, firstMessageDate, css) => {
@@ -250,7 +276,7 @@ export default class ChatExporter {
                         // [CENEFORPG fork] 완전 독립형: 메시지 이미지 base64 내장 + 모든 CSS 인라인
                         await ChatExporter.embedImages(ol);
                         const styleEl = document.createElement("style");
-                        styleEl.innerHTML = (await ChatExporter.collectCss()) + ChatExporter.exportExtraCSS;
+                        styleEl.innerHTML = (await ChatExporter.collectCss()) + ChatExporter.extraCSS(noBg);
                         head.append(styleEl);
                     } else {
                         const origin = window.location.origin;
@@ -281,7 +307,7 @@ export default class ChatExporter {
                         }
 
                         const styles = document.createElement("style");
-                        styles.innerHTML = ChatExporter.exportExtraCSS;
+                        styles.innerHTML = ChatExporter.extraCSS(noBg);
                         head.append(styles);
                     }
                 }
