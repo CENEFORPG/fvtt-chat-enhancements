@@ -252,6 +252,8 @@ export default class ChatExporter {
             #chat-log .message-header h4.message-sender { height: auto; overflow: visible; flex-direction: row; align-items: center; gap: 6px; }
             #chat-log .message-header h4.message-sender .avatar img { width: 40px; height: 40px; flex: none; object-fit: cover; border-radius: 6px; }
             #chat-log .message-header h4.message-sender .name-stacked { display: flex; flex-direction: column; min-width: 0; overflow: visible; }
+            /* 연속 발언 병합: 두 번째 메시지(.added)부터 이름 헤더 숨김 (포트레이트는 이미 숨겨짐). dnd5e2 헤더라 !important 필요 */
+            #chat-log .chat-message.added .message-header h4.message-sender { display: none !important; }
             ${noBgCss}
         `;
     }
