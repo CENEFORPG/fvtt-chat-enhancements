@@ -45,9 +45,29 @@ export default class ChatExporter {
         CSS.htmlFor = "include-css";
         CSS.append(includeCSS, CSSDiv);
 
+        // [CENEFORPG fork] 완전 독립형(오프라인): 모든 CSS 인라인 + 이미지 base64 내장
+        const includeStandalone = document.createElement("input");
+        includeStandalone.type = "checkbox";
+        includeStandalone.name = "standalone";
+        includeStandalone.id = "include-standalone";
+
+        const standaloneH3 = document.createElement("h3");
+        standaloneH3.innerHTML = "완전 독립형 (백업용)";
+
+        const standaloneP = document.createElement("p");
+        standaloneP.innerHTML = "CSS와 이미지를 파일 안에 모두 내장해, 서버가 꺼져 있어도 어디서나 열립니다. (파일 용량이 커지고 내보내기에 시간이 더 걸립니다)";
+
+        const standaloneDiv = document.createElement("div");
+        standaloneDiv.append(standaloneH3, standaloneP);
+
+        const standalone = document.createElement("label");
+        standalone.id = "export-standalone";
+        standalone.htmlFor = "include-standalone";
+        standalone.append(includeStandalone, standaloneDiv);
+
         const exporterForm = document.createElement("form");
         exporterForm.id = "chat-exporter";
-        exporterForm.append(types, CSS);
+        exporterForm.append(types, CSS, standalone);
 
         const exporter = new Dialog({
             title: `Chat Exporter`,
@@ -56,15 +76,15 @@ export default class ChatExporter {
                 order: {
                     label: game.i18n.localize("MRKB.OrderFlag"),
                     callback: () => {
-                        const css = document.querySelector("#chat-exporter")?.css?.checked;
-                        this.exportHTML(true, css)
+                        const form = document.querySelector("#chat-exporter");
+                        this.exportHTML(true, form?.css?.checked, form?.standalone?.checked)
                     }
                 },
                 timestamp: {
                     label: game.i18n.localize("MRKB.Timestamp"),
                     callback: () => {
-                        const css = document.querySelector("#chat-exporter")?.css?.checked;
-                        this.exportHTML(false, css)
+                        const form = document.querySelector("#chat-exporter");
+                        this.exportHTML(false, form?.css?.checked, form?.standalone?.checked)
                     }
                 },
                 cancel: {
@@ -132,9 +152,85 @@ export default class ChatExporter {
         });
     }
 
-    static exportHTML(order = false, css = false) {
+    // [CENEFORPG fork] 단일 URL → base64 data URI (실패 시 원본 URL 반환)
+    static async toDataURL(url) {
         try {
-            ChatExporter.createHTML((list, firstMessageDate, css) => {
+            const res = await fetch(url);
+            if (!res.ok) return url;
+            const blob = await res.blob();
+            return await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = () => resolve(url);
+                reader.readAsDataURL(blob);
+            });
+        } catch (e) {
+            return url;
+        }
+    }
+
+    // [CENEFORPG fork] 요소 내 모든 <img> 를 data URI 로 치환 (동일 URL 은 한 번만 받아 캐시)
+    static async embedImages(root) {
+        const imgs = [...root.querySelectorAll("img")];
+        const uniques = [...new Set(imgs.map(i => i.getAttribute("src")).filter(s => s && !s.startsWith("data:")))];
+        const cache = new Map();
+        await Promise.all(uniques.map(async (src) => cache.set(src, await ChatExporter.toDataURL(src))));
+        imgs.forEach((img) => {
+            const src = img.getAttribute("src");
+            if (cache.has(src)) img.setAttribute("src", cache.get(src));
+        });
+    }
+
+    // [CENEFORPG fork] CSS 파일 텍스트로 인라인. 내부 url(...) 은 절대경로로 치환(온라인 시 폰트/배경 로드).
+    static async fetchCss(cssUrl) {
+        try {
+            const res = await fetch(cssUrl);
+            if (!res.ok) return "";
+            let text = await res.text();
+            text = text.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (m, q, u) => {
+                if (/^(data:|https?:|\/\/|#)/.test(u)) return m;
+                try { return `url("${new URL(u, cssUrl).href}")`; } catch (e) { return m; }
+            });
+            return `\n/* ${cssUrl} */\n${text}`;
+        } catch (e) {
+            return "";
+        }
+    }
+
+    // [CENEFORPG fork] 내보내기에 필요한 모든 CSS 를 한 덩어리 텍스트로 수집 (priv_talk.css 는 맨 뒤)
+    static async collectCss() {
+        const origin = window.location.origin;
+        const urls = [
+            `${origin}/css/foundry2.css`,
+            ...game.system.styles.map(e => `${origin}/${e.src}`),
+            `${origin}/${MODULE_PATH}/styles/chat.css`,
+        ];
+        if (game.modules.get("sch-customize")?.active)
+            urls.push(`${origin}/modules/sch-customize/styles/priv_talk.css`);
+        const texts = await Promise.all(urls.map(u => ChatExporter.fetchCss(u)));
+        return texts.join("\n");
+    }
+
+    // [CENEFORPG fork] 모든 CSS 뒤에 와야 하는 보정 스타일: 잡담 변수값 주입 + dnd5e2 헤더 잘림 수정
+    static get exportExtraCSS() {
+        const root = getComputedStyle(document.documentElement);
+        const vars = ["--priv-talk-font-color", "--priv-talk-font-size", "--priv-talk-margin-left", "--sch-cus-chat-font-size"]
+            .map(v => `${v}:${root.getPropertyValue(v).trim()};`).join("");
+        return `
+            :root{${vars}}
+            body { padding: 0; }
+            .chat-log { padding: 0; margin: 0; }
+            /* dnd5e2 헤더(아바타+이름)가 height:36px h4 안에서 세로로 겹쳐 잘리던 문제 수정 */
+            #chat-log .message-header h4.message-sender { height: auto; overflow: visible; flex-direction: row; align-items: center; gap: 6px; }
+            #chat-log .message-header h4.message-sender .avatar img { width: 40px; height: 40px; flex: none; object-fit: cover; border-radius: 6px; }
+            #chat-log .message-header h4.message-sender .name-stacked { display: flex; flex-direction: column; min-width: 0; overflow: visible; }
+        `;
+    }
+
+    static exportHTML(order = false, css = false, standalone = false) {
+        const useCss = css || standalone; // 독립형은 CSS 인라인이 전제이므로 css 강제
+        try {
+            ChatExporter.createHTML(async (list, firstMessageDate, css) => {
                 const ol = document.createElement("ol");
                 ol.id = "chat-log";
                 ol.className = "chat-log themed " + (document.querySelector("#interface").classList.contains("theme-dark") ? "theme-dark" : "theme-light");
@@ -150,66 +246,62 @@ export default class ChatExporter {
                 head.append(meta, title);
 
                 if (css) {
-                    const origin = window.location.origin;
+                    if (standalone) {
+                        // [CENEFORPG fork] 완전 독립형: 메시지 이미지 base64 내장 + 모든 CSS 인라인
+                        await ChatExporter.embedImages(ol);
+                        const styleEl = document.createElement("style");
+                        styleEl.innerHTML = (await ChatExporter.collectCss()) + ChatExporter.exportExtraCSS;
+                        head.append(styleEl);
+                    } else {
+                        const origin = window.location.origin;
 
-                    const gameStyleLinks = document.createElement("link");
-                    gameStyleLinks.rel = "stylesheet";
-                    gameStyleLinks.href = `${origin}/css/foundry2.css`;
+                        const gameStyleLinks = document.createElement("link");
+                        gameStyleLinks.rel = "stylesheet";
+                        gameStyleLinks.href = `${origin}/css/foundry2.css`;
 
-                    const systemStyleLinks = game.system.styles.map(e => {
-                        const link = document.createElement("link");
-                        link.rel = "stylesheet";
-                        link.href = `${origin}/${e.src}`;
-                        return link;
-                    });
+                        const systemStyleLinks = game.system.styles.map(e => {
+                            const link = document.createElement("link");
+                            link.rel = "stylesheet";
+                            link.href = `${origin}/${e.src}`;
+                            return link;
+                        });
 
-                    const moduleStyleLink = document.createElement("link");
-                    moduleStyleLink.rel = "stylesheet";
-                    moduleStyleLink.href = `${origin}/${MODULE_PATH}/styles/chat.css`;
+                        const moduleStyleLink = document.createElement("link");
+                        moduleStyleLink.rel = "stylesheet";
+                        moduleStyleLink.href = `${origin}/${MODULE_PATH}/styles/chat.css`;
 
-                    const styles = document.createElement("style");
-                    styles.innerHTML = `
-                        body { padding: 0; }
-                        .chat-log { padding: 0; margin: 0; }
-                        /* [CENEFORPG fork] dnd5e2 헤더(아바타+이름)가 height:36px h4 안에서 세로로 겹쳐 잘리던 문제 수정 */
-                        #chat-log .message-header h4.message-sender { height: auto; overflow: visible; flex-direction: row; align-items: center; gap: 6px; }
-                        #chat-log .message-header h4.message-sender .avatar img { width: 40px; height: 40px; flex: none; object-fit: cover; border-radius: 6px; }
-                        #chat-log .message-header h4.message-sender .name-stacked { display: flex; flex-direction: column; min-width: 0; overflow: visible; }
-                    `;
+                        head.append(gameStyleLinks, ...systemStyleLinks, moduleStyleLink);
 
-                    head.append(gameStyleLinks, ...systemStyleLinks, moduleStyleLink, styles);
+                        // 잡담(sch-customize) CSS 는 보정 스타일보다 먼저 와야 변수가 덮어써진다
+                        if (game.modules.get("sch-customize")?.active) {
+                            const privLink = document.createElement("link");
+                            privLink.rel = "stylesheet";
+                            privLink.href = `${origin}/modules/sch-customize/styles/priv_talk.css`;
+                            head.append(privLink);
+                        }
 
-                    // [CENEFORPG fork] 잡담(sch-customize) 서식 포함: 모듈 CSS 링크 + 런타임 CSS 변수값 주입
-                    // (priv_talk.css 는 --priv-talk-* 변수에 의존하는데, 정적 HTML에는 JS가 없어 변수가 비므로 현재값을 박아 넣는다.)
-                    const privTalk = game.modules.get("sch-customize");
-                    if (privTalk?.active) {
-                        const privLink = document.createElement("link");
-                        privLink.rel = "stylesheet";
-                        privLink.href = `${origin}/modules/sch-customize/styles/priv_talk.css`;
-
-                        const root = getComputedStyle(document.documentElement);
-                        const vars = ["--priv-talk-font-color", "--priv-talk-font-size", "--priv-talk-margin-left", "--sch-cus-chat-font-size"]
-                            .map(v => `${v}:${root.getPropertyValue(v).trim()};`).join("");
-                        const privVars = document.createElement("style");
-                        privVars.innerHTML = `:root{${vars}}`;
-
-                        head.append(privLink, privVars); // privVars 가 priv_talk.css 뒤에 와야 빈 기본값을 덮어씀
+                        const styles = document.createElement("style");
+                        styles.innerHTML = ChatExporter.exportExtraCSS;
+                        head.append(styles);
                     }
                 }
 
                 const html = document.createElement("html");
                 html.append(head, body);
 
-                const plainText = html.outerHTML.replace(/\n/g, "").replace(/\s\s/g, "");
+                // 독립형은 인라인 CSS 손상을 막기 위해 공백 압축을 생략하고 줄바꿈만 제거
+                let plainText = html.outerHTML.replace(/\n/g, "");
+                if (!standalone) plainText = plainText.replace(/\s\s/g, "");
 
                 const date = ChatExporter.realignTime(firstMessageDate);
                 const time = `${date.ye}${date.mo}${date.da}-${date.ho}${date.mi}${date.se}`;
+                const suffix = standalone ? "-standalone" : "";
 
-                const file = new File([plainText], `${game.world.id}-log-${time}.html`, { type: 'text/html' });
+                const file = new File([plainText], `${game.world.id}-log-${time}${suffix}.html`, { type: 'text/html' });
                 const fileUrl = window.URL.createObjectURL(file);
 
                 const a = document.createElement('a');
-                a.download = `${game.world.id}-log-${time}.html`;
+                a.download = `${game.world.id}-log-${time}${suffix}.html`;
                 a.type = "text/html";
                 a.href = fileUrl;
                 a.target = "_blank";
@@ -217,7 +309,7 @@ export default class ChatExporter {
 
                 a.click();
                 window.URL.revokeObjectURL(fileUrl);
-            }, order, css);
+            }, order, useCss);
         } catch (err) {
             //debug("Exporting Log", err, true);
         }
