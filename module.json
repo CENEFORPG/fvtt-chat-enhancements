@@ -2,7 +2,7 @@
     "id": "mrkb-chat-enhancements",
     "title": "MRKB's Chat Enhancements_cf",
     "description": "<p>MRKB's Foundry VTT Chat Enhancements</p><p>[CENEFORPG fork] Turn alarm feature removed.</p>",
-    "version": "1.4.14",
+    "version": "1.4.16",
     "compatibility": {
         "minimum": "13",
         "verified": "13.351"

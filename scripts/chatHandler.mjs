@@ -220,7 +220,9 @@ export default class ChatHandler {
         html.classList.add(type ?? "normal");
         if (order || order === 0) {
             html.dataset.order = order;
-            html.style.order = order;
+            // [CENEFORPG fork] flex order 시각 재정렬 비활성화 — 세션 누적으로 order 플래그가 꼬여
+            // 새 메시지가 옛 로그 중간에 끼어드는 문제 발생. 채팅은 DOM(시간순)대로 표시한다.
+            // html.style.order = order;
         }
 
         if (added && Setting.get("chat-merge")) html.classList.add("added");
