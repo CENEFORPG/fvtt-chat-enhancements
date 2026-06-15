@@ -171,9 +171,30 @@ export default class ChatExporter {
                     styles.innerHTML = `
                         body { padding: 0; }
                         .chat-log { padding: 0; margin: 0; }
+                        /* [CENEFORPG fork] dnd5e2 헤더(아바타+이름)가 height:36px h4 안에서 세로로 겹쳐 잘리던 문제 수정 */
+                        #chat-log .message-header h4.message-sender { height: auto; overflow: visible; flex-direction: row; align-items: center; gap: 6px; }
+                        #chat-log .message-header h4.message-sender .avatar img { width: 40px; height: 40px; flex: none; object-fit: cover; border-radius: 6px; }
+                        #chat-log .message-header h4.message-sender .name-stacked { display: flex; flex-direction: column; min-width: 0; overflow: visible; }
                     `;
-                    
+
                     head.append(gameStyleLinks, ...systemStyleLinks, moduleStyleLink, styles);
+
+                    // [CENEFORPG fork] 잡담(sch-customize) 서식 포함: 모듈 CSS 링크 + 런타임 CSS 변수값 주입
+                    // (priv_talk.css 는 --priv-talk-* 변수에 의존하는데, 정적 HTML에는 JS가 없어 변수가 비므로 현재값을 박아 넣는다.)
+                    const privTalk = game.modules.get("sch-customize");
+                    if (privTalk?.active) {
+                        const privLink = document.createElement("link");
+                        privLink.rel = "stylesheet";
+                        privLink.href = `${origin}/modules/sch-customize/styles/priv_talk.css`;
+
+                        const root = getComputedStyle(document.documentElement);
+                        const vars = ["--priv-talk-font-color", "--priv-talk-font-size", "--priv-talk-margin-left", "--sch-cus-chat-font-size"]
+                            .map(v => `${v}:${root.getPropertyValue(v).trim()};`).join("");
+                        const privVars = document.createElement("style");
+                        privVars.innerHTML = `:root{${vars}}`;
+
+                        head.append(privLink, privVars); // privVars 가 priv_talk.css 뒤에 와야 빈 기본값을 덮어씀
+                    }
                 }
 
                 const html = document.createElement("html");
