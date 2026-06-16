@@ -129,10 +129,12 @@ export default class ChatExporter {
         }
     }
     static async createHTML(callback, isOrdered, css) {
-        // [CENEFORPG fork] order 플래그는 신뢰할 수 없어(세션 누적으로 꼬이거나, 전투 라운드 등
-        // 플래그 없는 메시지가 섞이면 NaN 정렬로 앞쪽에 몰림) 항상 timestamp(시간순)로 정렬.
-        // 또한 원본은 메시지를 동시 렌더해 "완료된 순서"대로 담아 섞였으므로, 정렬 후 순서대로 await 렌더한다.
-        const messages = [...game.messages.contents].sort((a, b) => a.timestamp - b.timestamp);
+        // [CENEFORPG fork] 정렬하지 않고 game.messages 의 자연 순서(생성순)를 그대로 사용.
+        //  - order 플래그 정렬: 세션 누적으로 꼬임
+        //  - timestamp 정렬: 전투 라운드 등 일부 메시지의 timestamp 가 0/없음 → NaN 정렬로 위/아래 쏠림
+        //  생성순은 라이브 채팅(1.4.16: DOM 순서)과 동일하고 위 함정을 모두 피한다.
+        //  또한 원본은 동시 렌더 완료 순서대로 담아 섞였으므로, 순서대로 await 렌더한다.
+        const messages = [...game.messages.contents];
         const firstMessageDate = messages[0]?.timestamp;
         const list = [];
         for (const e of messages) {
