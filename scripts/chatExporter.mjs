@@ -128,48 +128,21 @@ export default class ChatExporter {
             se : String(date.getSeconds()).padStart(2, '0')
         }
     }
-    static createHTML(callback, isOrdered, css) {
-        const messagesTemp = game.messages.contents;
-        const option = isOrdered ? (a, b) => {
-            let prev = a.flags["mrkb-chat-enhancements"]?.order;
-            let next = b.flags["mrkb-chat-enhancements"]?.order;
-            if (String(prev) && String(next)) return (prev - next);
-            else return (a.timestamp - b.timestamp);
-        } : (a, b) => {
-            let prev = a.timestamp;
-            let next = b.timestamp;
-            return (prev - next);
-        }
-        const messages = messagesTemp.sort(option);
-        const firstMessageDate = messagesTemp[0].timestamp;
+    static async createHTML(callback, isOrdered, css) {
+        // [CENEFORPG fork] order 플래그는 신뢰할 수 없어(세션 누적으로 꼬이거나, 전투 라운드 등
+        // 플래그 없는 메시지가 섞이면 NaN 정렬로 앞쪽에 몰림) 항상 timestamp(시간순)로 정렬.
+        // 또한 원본은 메시지를 동시 렌더해 "완료된 순서"대로 담아 섞였으므로, 정렬 후 순서대로 await 렌더한다.
+        const messages = [...game.messages.contents].sort((a, b) => a.timestamp - b.timestamp);
+        const firstMessageDate = messages[0]?.timestamp;
         const list = [];
-        let index = 0;
-
-        messages.forEach((e) => {
+        for (const e of messages) {
             e.exporting = true;
-            e.renderHTML().then((i) => {
-                if (!i) {
-                    index++;
-                    return;
-                }
-                const image = i?.querySelectorAll("img");
-                image.forEach((img) => img.setAttribute("src", img.src));
-
-                list.push(i);
-
-                if (index === messages.length - 1) {
-                    if (isOrdered) list.sort((a, b) => {
-                        let prev = a.dataset.order;
-                        let next = b.dataset.order;
-                        if (String(prev) && String(next)) return (prev - next);
-                        else return (a.timestamp - b.timestamp);
-                    });
-                    callback(list, firstMessageDate, css);
-                }else {
-                    index++;
-                }
-            })
-        });
+            const i = await e.renderHTML();
+            if (!i) continue;
+            i.querySelectorAll("img").forEach((img) => img.setAttribute("src", img.src));
+            list.push(i);
+        }
+        callback(list, firstMessageDate, css);
     }
 
     // [CENEFORPG fork] 단일 URL → base64 data URI (실패 시 원본 URL 반환)
