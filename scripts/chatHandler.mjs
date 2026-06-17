@@ -218,12 +218,12 @@ export default class ChatHandler {
         const isAuthor = message.isAuthor;
 
         html.classList.add(type ?? "normal");
-        if (order || order === 0) {
-            html.dataset.order = order;
-            // [CENEFORPG fork] flex order 시각 재정렬 비활성화 — 세션 누적으로 order 플래그가 꼬여
-            // 새 메시지가 옛 로그 중간에 끼어드는 문제 발생. 채팅은 DOM(시간순)대로 표시한다.
-            // html.style.order = order;
-        }
+        if (order || order === 0) html.dataset.order = order; // 내보내기 참고용으로만 유지
+        // [CENEFORPG fork] order 플래그는 세션 누적으로 꼬여 새 메시지가 옛 로그 중간/하단으로 튀게 만듦.
+        // 끄는 것만으론 새 메시지 수신 시 DOM 재배치로 다시 틀어져서, 아예 컬렉션(생성=시간순) 인덱스를
+        // flex order 로 강제한다. → DOM 재배치/깨진 order 플래그와 무관하게 항상 시간순 유지.
+        const chronoIndex = game.messages.contents.findIndex(m => m.id === message.id);
+        if (chronoIndex >= 0) html.style.order = chronoIndex;
 
         if (added && Setting.get("chat-merge")) html.classList.add("added");
         if (isAuthor) html.classList.add("self");
